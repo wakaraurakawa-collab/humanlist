@@ -158,3 +158,5 @@ main.wide{max-width:1180px}
   .cal.n7 .block input[type=checkbox]{display:none}
   .seg2 button{padding:5px 9px}
 }
+.dc{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.sel{position:absolute;left:2px;right:2px;z-index:3;pointer-events:none;border:2px solid var(--pri);border-radius:6px;background:color-mix(in srgb,var(--pri) 22%,transparent);color:var(--pri);font-size:11px;font-weight:600;padding:1px 4px;overflow:hidden}

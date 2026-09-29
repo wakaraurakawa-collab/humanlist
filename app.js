@@ -74,7 +74,10 @@
   const SVGNS = 'http://www.w3.org/2000/svg';
   const STRIP = 14; // 右のWBSに並べる日数
   const VIEWS = [[1, '1日'], [3, '3日'], [7, '週']];
-  const viewN = () => [1, 3, 7].includes(Number(state.settings.view)) ? Number(state.settings.view) : 1;
+  const isNarrow = () => window.matchMedia('(max-width:759px)').matches;
+  const viewN = () => [1, 3, 7].includes(Number(state.settings.view)) ? Number(state.settings.view) : (isNarrow() ? 1 : 7);
+  let suppressClick = false; // ドラッグ直後のclickを無視する
+  const SNAP = 15; // 分
   // 週表示は月曜始まり。1日/3日は選択日から
   function viewStart() {
     if (viewN() !== 7) return ui.date;
@@ -132,15 +135,71 @@
     for (let hr = startH; hr < endH; hr++) gut.append(h('div', { class: 'hl', style: `top:${(hr - startH) * PX}px` }, h('span', {}, `${hr}:00`)));
     body.append(gut);
     dates.forEach((d, i) => {
-      const dc = h('div', {
-        class: 'dc' + (d === T ? ' today' : '') + (isWe(d) ? ' we' : ''), 'data-date': d,
-        onclick: e => {
-          if (e.target.closest('.block')) return;
-          const y = e.clientY - dc.getBoundingClientRect().top;
-          const m = Math.min(Math.floor((startH * 60 + y / PX * 60) / 30) * 30, 23 * 60 + 30);
-          openDialog(null, { date: d, time: C.fromMin(m) });
-        },
+      const dc = h('div', { class: 'dc' + (d === T ? ' today' : '') + (isWe(d) ? ' we' : ''), 'data-date': d });
+      // 位置(clientY) → 時刻(分)。近い15分に丸める
+      const yToMin = cy => {
+        const y = cy - dc.getBoundingClientRect().top;
+        const m = Math.round((startH * 60 + y / PX * 60) / SNAP) * SNAP;
+        return Math.max(startH * 60, Math.min(m, 24 * 60 - SNAP));
+      };
+      let sel = null;
+      const showSel = (a, c) => {
+        const lo = Math.min(a, c), hi = a === c ? a + 30 : Math.max(a, c);
+        if (!sel) { sel = h('div', { class: 'sel' }); dc.append(sel); }
+        sel.style.top = `${(lo / 60 - startH) * PX}px`; sel.style.height = `${(hi - lo) / 60 * PX}px`;
+        sel.textContent = a === c ? C.fromMin(lo) : `${C.fromMin(lo)}–${C.fromMin(hi)}`;
+      };
+      const finish = (a, c) => {
+        suppressClick = true; setTimeout(() => { suppressClick = false; }, 400);
+        const lo = Math.min(a, c), hi = Math.max(a, c);
+        openDialog(null, hi - lo >= SNAP ? { date: d, time: C.fromMin(lo), duration: hi - lo } : { date: d, time: C.fromMin(lo) });
+      };
+      // タップ/クリック: 開始時刻だけ推測して入力
+      dc.addEventListener('click', e => {
+        if (suppressClick || e.target.closest('.block')) return;
+        openDialog(null, { date: d, time: C.fromMin(yToMin(e.clientY)) });
       });
+      // マウス: ドラッグで範囲選択
+      let drag = null;
+      dc.addEventListener('pointerdown', e => {
+        if (e.pointerType !== 'mouse' || e.button !== 0 || e.target.closest('.block')) return;
+        e.preventDefault(); dc.setPointerCapture(e.pointerId);
+        drag = { a: yToMin(e.clientY), c: null, moved: false };
+      });
+      dc.addEventListener('pointermove', e => {
+        if (!drag) return;
+        drag.c = yToMin(e.clientY);
+        if (drag.c !== drag.a) drag.moved = true;
+        if (drag.moved) showSel(drag.a, drag.c);
+      });
+      dc.addEventListener('pointerup', () => {
+        const dr = drag; drag = null;
+        if (dr && dr.moved) finish(dr.a, dr.c); // 動かしていなければ click に任せる
+        else if (sel) { sel.remove(); sel = null; }
+      });
+      // タッチ: 長押ししてからなぞる（通常のなぞりはスクロール）
+      let tch = null;
+      dc.addEventListener('touchstart', e => {
+        if (e.touches.length !== 1 || e.target.closest('.block')) return;
+        const t = e.touches[0];
+        tch = { x: t.clientX, y: t.clientY, a: yToMin(t.clientY), c: yToMin(t.clientY), on: false };
+        tch.timer = setTimeout(() => { if (tch) { tch.on = true; showSel(tch.a, tch.a); if (navigator.vibrate) navigator.vibrate(15); } }, 350);
+      }, { passive: true });
+      dc.addEventListener('touchmove', e => {
+        if (!tch) return;
+        const t = e.touches[0];
+        if (!tch.on) { if (Math.hypot(t.clientX - tch.x, t.clientY - tch.y) > 8) { clearTimeout(tch.timer); tch = null; } return; }
+        e.preventDefault(); // 長押し後はスクロールさせない
+        tch.c = yToMin(t.clientY); showSel(tch.a, tch.c);
+      }, { passive: false });
+      const tend = () => {
+        if (!tch) return;
+        clearTimeout(tch.timer);
+        const t = tch; tch = null;
+        if (t.on) finish(t.a, t.c);
+      };
+      dc.addEventListener('touchend', tend);
+      dc.addEventListener('touchcancel', () => { if (tch) { clearTimeout(tch.timer); tch = null; } if (sel) { sel.remove(); sel = null; } });
       const list = perDay[i].filter(o => o.start != null).sort((a, b) => a.start - b.start);
       layoutColumns(list).forEach(({ o, col, cols }) => {
         const dur = o.dur || 30, it = o.item;
@@ -160,7 +219,7 @@
       body.append(dc);
     });
     cal.append(body);
-    left.append(cal, h('p', { class: 'hint' }, '空いている時間をタップすると、その日時で追加できます。日付をタップすると時間未定で追加できます。'));
+    left.append(cal, h('p', { class: 'hint' }, '空いている時間をタップすると開始時刻つきで追加。PCはドラッグ、スマホは長押ししてなぞると時間の長さも決められます。日付の見出しをタップすると時間未定で追加。'));
 
     // ---- 右: WBS（継続作業・習慣）----
     const stripDates = Array.from({ length: STRIP }, (_, i) => C.addDays(start, i));
@@ -504,7 +563,7 @@
   function openDialog(item, preset) {
     ui.editing = item || null;
     form.reset();
-    $('#dlgTitle').textContent = item ? '編集' : preset ? `追加　${fmtDate(preset.date)}${preset.time ? ' ' + preset.time : ''}` : '追加';
+    $('#dlgTitle').textContent = item ? '編集' : preset ? `追加　${fmtDate(preset.date)}${preset.time ? ' ' + preset.time + (preset.duration ? '–' + C.fromMin(C.toMin(preset.time) + preset.duration) : '') : ''}` : '追加';
     $('#delBtn').hidden = !item;
     $('#kindSeg').hidden = !!item;
     const all = [0, 1, 2, 3, 4, 5, 6];
@@ -522,6 +581,7 @@
     } else if (preset) {
       form.date.value = form.startDate.value = preset.date;
       form.time.value = form.stime.value = form.htime.value = preset.time || '';
+      if (preset.duration) form.duration.value = form.perDay.value = form.hduration.value = preset.duration;
     }
     setKind(kind);
     dlg.showModal();
