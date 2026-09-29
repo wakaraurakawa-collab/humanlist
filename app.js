@@ -494,7 +494,8 @@
       h('div', { class: 'mini' },
         h('button', { onclick: exportData }, 'バックアップを書き出す'),
         h('label', { class: 'btnlike' }, '読み込む', h('input', { type: 'file', accept: 'application/json', hidden: true, onchange: importData })),
-        h('button', { onclick: setupWeather }, '天気の地点を設定')),
+        h('button', { onclick: setupWeather }, '天気の地点を設定'),
+        h('button', { onclick: () => forceUpdate() }, '最新に更新')),
       h('small', {}, 'データはこのブラウザの中にだけ保存されます。端末を変えるときはバックアップを使ってください。')));
   }
   function taskRow(t, T) {
@@ -669,5 +670,28 @@
   document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });
   setInterval(() => { if (ui.tab === 'day') render(); }, 60000);
   render(); loadWeather();
-  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
+  // ---------- 自動更新 ----------
+  // 新しい版が見つかったら再読み込み（入力画面を開いている間は閉じるまで待つ）
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    const hadController = !!navigator.serviceWorker.controller;
+    let reloading = false;
+    const reload = () => { if (reloading) return; reloading = true; location.reload(); };
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController) return; // 初回インストールでは再読み込みしない
+      if (dlg.open) dlg.addEventListener('close', reload, { once: true }); else reload();
+    });
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => {
+      const check = () => reg.update().catch(() => {});
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
+      setInterval(check, 10 * 60 * 1000);
+    }).catch(() => {});
+  }
+  async function forceUpdate() {
+    try {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r => r.unregister()));
+      for (const k of await caches.keys()) await caches.delete(k);
+    } catch (e) { /* ignore */ }
+    location.reload();
+  }
 })();
