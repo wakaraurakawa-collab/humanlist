@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>humanlist</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <h1>humanlist</h1>
+  <nav id="tabs" role="tablist">
+    <button data-tab="day" class="active">今日</button>
+    <button data-tab="wbs">WBS</button>
+    <button data-tab="tasks">タスク</button>
+    <button data-tab="memo">メモ</button>
+  </nav>
+  <button id="addBtn" class="primary">＋ 追加</button>
+</header>
+
+<div id="weather" class="weather" hidden></div>
+
+<main>
+  <section id="view-day" class="view"></section>
+  <section id="view-wbs" class="view" hidden></section>
+  <section id="view-tasks" class="view" hidden></section>
+  <section id="view-memo" class="view" hidden></section>
+</main>
+
+<dialog id="dlg">
+  <form method="dialog" id="form">
+    <h2 id="dlgTitle">追加</h2>
+
+    <div class="seg" id="kindSeg">
+      <label><input type="radio" name="kind" value="task" checked><span>単発タスク</span></label>
+      <label><input type="radio" name="kind" value="series"><span>継続作業</span></label>
+      <label><input type="radio" name="kind" value="habit"><span>習慣</span></label>
+      <label><input type="radio" name="kind" value="memo"><span>メモ</span></label>
+    </div>
+    <p class="hint" id="kindHint"></p>
+
+    <label class="f">タイトル<input name="title" required maxlength="100"></label>
+
+    <div data-for="task">
+      <div class="row">
+        <label class="f">日付（空欄＝いつでも）<input type="date" name="date"></label>
+        <label class="f">開始時刻（任意）<input type="time" name="time"></label>
+        <label class="f">所要（分・任意）<input type="number" name="duration" min="0" step="5"></label>
+      </div>
+    </div>
+
+    <div data-for="series">
+      <div class="row">
+        <label class="f">合計作業時間（時間）<input type="number" name="totalH" min="0.5" step="0.5"></label>
+        <label class="f">1日あたり（分）<input type="number" name="perDay" min="5" step="5" value="60"></label>
+      </div>
+      <div class="row">
+        <label class="f">開始日<input type="date" name="startDate"></label>
+        <label class="f">開始時刻（任意）<input type="time" name="stime"></label>
+      </div>
+      <div class="f">曜日<div class="days" id="daysSeries"></div></div>
+      <p class="preview" id="preview"></p>
+    </div>
+
+    <div data-for="habit">
+      <div class="row">
+        <label class="f">目標時刻（任意）<input type="time" name="htime"></label>
+        <label class="f">所要（分・任意）<input type="number" name="hduration" min="0" step="5"></label>
+      </div>
+      <div class="f">曜日<div class="days" id="daysHabit"></div></div>
+    </div>
+
+    <label class="f" data-for="task series habit">メモ（任意）<textarea name="note" rows="2"></textarea></label>
+    <label class="f" data-for="memo">内容<textarea name="text" rows="5"></textarea></label>
+
+    <div class="actions">
+      <button type="button" id="delBtn" class="danger" hidden>削除</button>
+      <span class="spacer"></span>
+      <button type="button" id="cancelBtn">キャンセル</button>
+      <button type="submit" class="primary">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="core.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
