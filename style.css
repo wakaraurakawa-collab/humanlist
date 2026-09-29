@@ -75,3 +75,5 @@ dialog h2{margin:0 0 10px;font-size:17px}
 .preview{background:color-mix(in srgb,var(--pri) 12%,transparent);border-radius:8px;padding:8px 10px;font-size:14px;margin:8px 0}
 .actions{display:flex;gap:8px;margin-top:14px}.spacer{flex:1}
 [hidden]{display:none!important}
+.top{padding-top:calc(10px + env(safe-area-inset-top))}
+main{padding-bottom:calc(80px + env(safe-area-inset-bottom))}
