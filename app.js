@@ -8,7 +8,7 @@
 
   // ---------- state ----------
   let state = load();
-  const ui = { tab: 'day', date: C.ds(new Date()), wbsStart: null, editing: null };
+  const ui = { pin: null, tab: 'day', date: C.ds(new Date()), wbsStart: null, editing: null };
 
   function load() {
     try {
@@ -65,40 +65,45 @@
   function render() {
     for (const b of document.querySelectorAll('#tabs button')) b.classList.toggle('active', b.dataset.tab === ui.tab);
     for (const v of document.querySelectorAll('.view')) v.hidden = v.id !== 'view-' + ui.tab;
+    $('main').classList.toggle('wide', ui.tab === 'day');
     ({ day: renderDay, wbs: renderWbs, tasks: renderTasks, memo: renderMemo })[ui.tab]();
   }
 
-  // ----- 今日 (タイムライン) -----
+  // ----- 今日 (カレンダー ⇄ WBS/TODO を線でつなぐ) -----
   const PX = 56; // 1時間あたりのpx
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  const STRIP = 14; // 右のWBSに並べる日数（選択日から）
+
   function renderDay() {
     const root = $('#view-day'); root.replaceChildren();
     const T = today();
     const proj = C.projectAll(state.items, T);
     const occs = C.occurrences(state.items, ui.date, T, proj);
 
-    const nav = h('div', { class: 'datenav' },
+    root.append(h('div', { class: 'datenav' },
       h('button', { onclick: () => shiftDate(-1) }, '‹'),
       h('strong', {}, `${fmtDate(ui.date)}${ui.date === T ? '  今日' : ''}`),
       h('button', { onclick: () => shiftDate(1) }, '›'),
-      ui.date !== T && h('button', { onclick: () => { ui.date = T; render(); } }, '今日へ'));
-    root.append(nav);
+      ui.date !== T && h('button', { onclick: () => { ui.date = T; render(); } }, '今日へ')));
+
+    if (!state.items.length) {
+      root.append(h('p', { class: 'empty' }, 'まだ何もありません。「＋ 追加」から登録すると、ここにカレンダーとWBSがつながって表示されます。'));
+      return;
+    }
 
     const timed = occs.filter(o => o.start != null).sort((a, b) => a.start - b.start);
     const untimed = occs.filter(o => o.start == null);
+    const wrap = h('div', { class: 'linkview' });
+    const svg = document.createElementNS(SVGNS, 'svg'); svg.setAttribute('class', 'lv-lines');
+    const left = h('div', { class: 'lv-left' });
+    const right = h('div', { class: 'lv-right' });
+    wrap.append(svg, left, right);
 
-    // 時間未定
-    const someday = ui.date === T ? state.items.filter(i => i.kind === 'task' && !i.date && !i.done) : [];
-    if (untimed.length || someday.length) {
+    // 左: 時間未定 + タイムライン
+    if (untimed.length) {
       const box = h('div', { class: 'card' }, h('h3', {}, '時間未定'));
-      for (const o of untimed) box.append(occRow(o, ui.date));
-      for (const t of someday) box.append(occRow({ item: t, start: null, dur: t.duration || null, planned: t.duration || null, done: false }, ui.date, 'いつでも'));
-      root.append(box);
-    }
-
-    // タイムライン
-    if (!timed.length && !untimed.length && !someday.length) {
-      root.append(h('p', { class: 'empty' }, 'この日の予定はありません。「＋ 追加」から登録できます。'));
-      return;
+      for (const o of untimed) box.append(occRow(o, ui.date, proj));
+      left.append(box);
     }
     if (timed.length) {
       const startH = Math.min(6, Math.floor(timed[0].start / 60));
@@ -107,24 +112,118 @@
       for (let hr = startH; hr < endH; hr++)
         tl.append(h('div', { class: 'hour', style: `top:${(hr - startH) * PX}px` }, h('span', {}, `${hr}:00`)));
       layoutColumns(timed).forEach(({ o, col, cols }) => {
-        const dur = o.dur || 30;
-        const top = (o.start / 60 - startH) * PX;
-        const it = o.item;
-        const blk = h('div', {
-          class: 'block' + (o.done ? ' done' : ''),
-          style: `top:${top}px;height:${Math.max(dur / 60 * PX - 2, 26)}px;left:calc(${col / cols * 100}% + 44px * ${1 - col / cols});width:calc(${100 / cols}% - 44px / ${cols});--c:${colorFor(it)}`,
+        const dur = o.dur || 30, it = o.item;
+        tl.append(h('div', {
+          class: 'block' + (o.done ? ' done' : ''), 'data-id': it.id,
+          style: `top:${(o.start / 60 - startH) * PX}px;height:${Math.max(dur / 60 * PX - 2, 26)}px;left:calc(${col / cols * 100}% + 44px * ${1 - col / cols});width:calc(${100 / cols}% - 44px / ${cols});--c:${colorFor(it)}`,
         },
           h('input', { type: 'checkbox', checked: o.done, onchange: () => toggleOcc(o, ui.date) }),
-          h('div', { class: 'bt', onclick: () => openDialog(it) },
+          h('div', { class: 'bt', onclick: () => pinOrEdit(it) },
             h('b', {}, it.title),
-            h('small', {}, `${C.fromMin(o.start)}${o.dur ? '–' + C.fromMin(o.start + o.dur) : ''}${badge(o, proj)}`)));
-        tl.append(blk);
+            h('small', {}, `${C.fromMin(o.start)}${o.dur ? '–' + C.fromMin(o.start + o.dur) : ''}${badge(o, proj)}`))));
       });
       if (ui.date === T) {
         const now = new Date(), m = now.getHours() * 60 + now.getMinutes();
         if (m / 60 >= startH && m / 60 <= endH) tl.append(h('div', { class: 'now', style: `top:${(m / 60 - startH) * PX}px` }));
       }
-      root.append(tl);
+      left.append(tl);
+    }
+    if (!timed.length && !untimed.length) left.append(h('p', { class: 'empty small' }, 'この日の予定はありません。'));
+
+    // 右: WBS（継続作業・習慣）
+    const dates = Array.from({ length: STRIP }, (_, i) => C.addDays(ui.date, i));
+    const rows = state.items.filter(i => (i.kind === 'series' && !proj[i.id].finished) || i.kind === 'habit');
+    if (rows.length) {
+      const box = h('div', { class: 'card' }, h('h3', {}, `WBS　${fmtDate(dates[0])} から${STRIP}日`));
+      for (const it of rows) {
+        const p = proj[it.id];
+        const sub = it.kind === 'series' ? `残り${C.fmtDur(p.remaining)} / ${C.fmtDur(it.total)}` : `🔥 ${C.streak(it, T)}日連続`;
+        const eta = it.kind === 'series' ? (p.end ? `完了予定 ${fmtDate(p.end)}` : '') : '';
+        const strip = h('div', { class: 'strip' });
+        dates.forEach((d, i) => {
+          const o = C.occurrences([it], d, T, proj).find(x => x.item === it);
+          const cell = h('div', {
+            class: 'c' + (i === 0 ? ' first' : '') + ([0, 6].includes(C.dowOf(d)) ? ' we' : ''),
+            title: `${fmtDate(d)}${o && o.planned ? ' ' + C.fmtDur(o.planned) : ''}`,
+            onclick: ev => { ev.stopPropagation(); ui.date = d; render(); },
+          }, h('span', { class: 'dn' }, String(C.parse(d).getDate())),
+            o && h('i', { class: 'm ' + it.kind + (o.done ? ' done' : '') + (it.kind === 'series' && p.end === d ? ' last' : '') }));
+          if (i === 0) cell.setAttribute('data-anchor', it.id);
+          strip.append(cell);
+        });
+        box.append(h('div', { class: 'srow', 'data-id': it.id, style: `--c:${colorFor(it)}` },
+          h('div', { class: 'sh' }, h('div', { class: 'sname', onclick: () => openDialog(it) }, h('b', {}, it.title), h('small', {}, sub)),
+            h('span', { class: 'eta' }, eta)),
+          strip));
+      }
+      right.append(box);
+    }
+
+    // 右: TODO（単発タスク）
+    const tasks = state.items.filter(i => i.kind === 'task' && (!i.done || i.date === ui.date))
+      .sort((a, b) => (a.done - b.done) || (a.date || '9999').localeCompare(b.date || '9999') || (a.time || '').localeCompare(b.time || ''));
+    const tbox = h('div', { class: 'card' }, h('h3', {}, `TODO（${tasks.filter(t => !t.done).length}）`));
+    if (!tasks.length) tbox.append(h('p', { class: 'empty small' }, '単発タスクはありません'));
+    for (const t of tasks) {
+      const o = { item: t, done: t.done };
+      const meta = [t.date ? fmtDate(t.date) : 'いつでも', t.time, t.duration && C.fmtDur(t.duration), t.date && t.date < T && !t.done && '期限切れ'].filter(Boolean).join(' ・ ');
+      tbox.append(h('div', { class: 'row-item' + (t.done ? ' done' : '') + (t.date === ui.date ? ' onday' : ''), 'data-id': t.id, 'data-todo': t.id, style: `--c:${colorFor(t)}` },
+        h('input', { type: 'checkbox', checked: t.done, onchange: () => toggleOcc(o, ui.date) }),
+        h('div', { class: 'grow', onclick: () => openDialog(t) }, h('b', {}, t.title), h('small', {}, meta))));
+    }
+    right.append(tbox);
+
+    // ハイライトのイベント
+    wrap.addEventListener('mouseover', e => {
+      if (ui.pin) return;
+      const t = e.target.closest('[data-id]');
+      setFocus(t ? t.dataset.id : null);
+    });
+    wrap.addEventListener('mouseleave', () => { if (!ui.pin) setFocus(null); });
+    wrap.addEventListener('click', e => { if (!e.target.closest('[data-id]')) { ui.pin = null; setFocus(null); } });
+    root.append(wrap);
+    requestAnimationFrame(() => { drawLines(); if (ui.pin && wrap.querySelector(`[data-id="${ui.pin}"]`)) setFocus(ui.pin); else ui.pin = null; });
+  }
+
+  function setFocus(id) {
+    const wrap = $('#view-day .linkview'); if (!wrap) return;
+    wrap.classList.toggle('has-focus', !!id);
+    wrap.querySelectorAll('[data-id]').forEach(e => e.classList.toggle('hl', !!id && e.dataset.id === id));
+  }
+  function pinOrEdit(it) {
+    if (ui.pin === it.id) { openDialog(it); return; }
+    ui.pin = it.id; setFocus(it.id);
+    const wrap = $('#view-day .linkview');
+    if (wrap && wrap.clientWidth < 760) { // 1列表示のときは該当行へスクロール
+      const t = wrap.querySelector(`.lv-right [data-id="${it.id}"]`);
+      if (t) t.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }
+  /** 左の予定 → 右のWBSマス / TODO行 へ曲線を引く */
+  function drawLines() {
+    const wrap = $('#view-day .linkview'); if (!wrap) return;
+    const svg = wrap.querySelector('.lv-lines'); svg.replaceChildren();
+    if (wrap.clientWidth < 760) { svg.style.display = 'none'; return; }
+    svg.style.display = '';
+    const wr = wrap.getBoundingClientRect();
+    svg.setAttribute('width', wr.width); svg.setAttribute('height', wr.height);
+    for (const el of wrap.querySelectorAll('.lv-left [data-id]')) {
+      const id = el.dataset.id;
+      const tgt = wrap.querySelector(`.lv-right [data-anchor="${id}"], .lv-right [data-todo="${id}"]`);
+      if (!tgt) continue;
+      const a = el.getBoundingClientRect(), b = tgt.getBoundingClientRect();
+      const x1 = a.right - wr.left, y1 = a.top - wr.top + Math.min(a.height / 2, 16);
+      const x2 = b.left - wr.left, y2 = b.top - wr.top + b.height / 2;
+      const dx = Math.max(30, (x2 - x1) / 2);
+      const color = getComputedStyle(el).getPropertyValue('--c').trim() || '#4f7cff';
+      const path = document.createElementNS(SVGNS, 'path');
+      path.setAttribute('d', `M${x1} ${y1} C${x1 + dx} ${y1} ${x2 - dx} ${y2} ${x2} ${y2}`);
+      path.setAttribute('fill', 'none'); path.setAttribute('stroke', color);
+      path.setAttribute('data-id', id);
+      const dot = document.createElementNS(SVGNS, 'circle');
+      dot.setAttribute('cx', x2); dot.setAttribute('cy', y2); dot.setAttribute('r', 4);
+      dot.setAttribute('fill', color); dot.setAttribute('data-id', id);
+      svg.append(path, dot);
     }
   }
   function badge(o, proj) {
@@ -153,14 +252,13 @@
     if (cluster.length) flush();
     return res;
   }
-  function occRow(o, date, sub) {
+  function occRow(o, date, proj) {
     const it = o.item;
-    const proj = C.projectAll(state.items, today());
     const extra = it.kind === 'series' ? `${C.fmtDur(o.planned)}${badge(o, proj)}`
-      : [sub, o.dur && C.fmtDur(o.dur), o.overdue && `期限切れ(${fmtDate(it.date)})`].filter(Boolean).join(' ・ ');
-    return h('div', { class: 'row-item' + (o.done ? ' done' : ''), style: `--c:${colorFor(it)}` },
+      : [o.dur && C.fmtDur(o.dur), o.overdue && `期限切れ(${fmtDate(it.date)})`].filter(Boolean).join(' ・ ');
+    return h('div', { class: 'row-item' + (o.done ? ' done' : ''), 'data-id': it.id, style: `--c:${colorFor(it)}` },
       h('input', { type: 'checkbox', checked: o.done, onchange: () => toggleOcc(o, date) }),
-      h('div', { class: 'grow', onclick: () => openDialog(it) }, h('b', {}, it.title), h('small', {}, extra)));
+      h('div', { class: 'grow', onclick: () => pinOrEdit(it) }, h('b', {}, it.title), h('small', {}, extra)));
   }
   function shiftDate(n) { ui.date = C.addDays(ui.date, n); render(); }
 
@@ -195,7 +293,7 @@
     const head = h('tr', {}, h('th', { class: 'name' }, '項目'));
     dates.forEach(d => head.append(h('th', {
       class: (d === T ? 'today ' : '') + ([0, 6].includes(C.dowOf(d)) ? 'we' : ''),
-      onclick: () => { ui.date = d; ui.tab = 'day'; render(); },
+      onclick: () => { ui.date = d; ui.pin = null; ui.tab = 'day'; render(); },
     }, `${C.parse(d).getDate()}`, h('br'), DOW[C.dowOf(d)])));
     head.append(h('th', { class: 'end' }, '完了予定'));
     table.append(h('thead', {}, head));
@@ -479,6 +577,8 @@
   // ---------- init ----------
   $('#tabs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { ui.tab = b.dataset.tab; render(); } });
   $('#addBtn').onclick = () => openDialog(null);
+  let raf = 0; const redraw = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => ui.tab === 'day' && drawLines()); };
+  window.addEventListener('resize', redraw); window.addEventListener('scroll', redraw, { passive: true });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });
   setInterval(() => { if (ui.tab === 'day') render(); }, 60000);
   render(); loadWeather();

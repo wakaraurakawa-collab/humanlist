@@ -77,3 +77,32 @@ dialog h2{margin:0 0 10px;font-size:17px}
 [hidden]{display:none!important}
 .top{padding-top:calc(10px + env(safe-area-inset-top))}
 main{padding-bottom:calc(80px + env(safe-area-inset-bottom))}
+/* 今日: カレンダー ⇄ WBS/TODO */
+main.wide{max-width:1180px}
+.linkview{position:relative;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);column-gap:84px;align-items:start}
+.lv-lines{position:absolute;left:0;top:0;pointer-events:none;overflow:visible;z-index:3}
+.lv-lines path{stroke-width:1.6;stroke-linecap:round;opacity:.6;transition:opacity .15s,stroke-width .15s}
+.lv-lines circle{opacity:.85;transition:opacity .15s}
+.lv-right{position:sticky;top:calc(64px + env(safe-area-inset-top,0px))}
+.lv-left .card:first-child{margin-top:0}.lv-right .card:first-child{margin-top:0}
+.srow{padding:8px 0 10px 10px;border-left:4px solid var(--c);margin-top:8px;border-radius:6px;background:color-mix(in srgb,var(--c) 6%,transparent);padding-right:8px}
+.sh{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.sname{cursor:pointer;min-width:0}.sname b{display:block}
+.srow .eta{font-size:12px;white-space:nowrap}
+.strip{display:grid;grid-template-columns:repeat(14,minmax(0,1fr));gap:2px;margin-top:6px}
+.strip .c{position:relative;height:30px;border-radius:5px;background:color-mix(in srgb,var(--mut) 8%,transparent);cursor:pointer;display:flex;align-items:flex-end;justify-content:center;padding-bottom:3px}
+.strip .c.we{background:color-mix(in srgb,var(--mut) 15%,transparent)}
+.strip .c.first{outline:2px solid var(--c);outline-offset:0}
+.strip .dn{position:absolute;top:1px;left:0;right:0;text-align:center;font-size:9px;color:var(--mut)}
+.strip .m{display:block;width:70%;height:10px;border-radius:3px;background:color-mix(in srgb,var(--c) 50%,var(--card))}
+.strip .m.habit{width:10px;border-radius:50%}.strip .m.done{background:var(--c)}.strip .m.last{outline:2px solid var(--c);outline-offset:1px}
+.row-item.onday{box-shadow:inset 0 0 0 1px var(--c)}
+/* ハイライト: 選んだ項目以外を薄く */
+.has-focus [data-id]{transition:opacity .15s}
+.has-focus .lv-left [data-id]:not(.hl),.has-focus .lv-right [data-id]:not(.hl){opacity:.35}
+.has-focus .lv-lines [data-id]:not(.hl){opacity:.1}
+.lv-lines path.hl{stroke-width:3;opacity:1}.lv-lines circle.hl{opacity:1}
+.block.hl,.srow.hl,.row-item.hl{box-shadow:0 0 0 2px var(--c)}
+@media (max-width:759px){.linkview{grid-template-columns:minmax(0,1fr);row-gap:12px}.lv-right{position:static}}
+#tabs button{white-space:nowrap}
+@media (max-width:520px){.top{gap:6px 8px}.top h1{font-size:16px}#tabs{order:3;flex-basis:100%}#tabs button{flex:1;padding:6px 4px}#addBtn{margin-left:auto}}
