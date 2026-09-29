@@ -72,84 +72,114 @@
   // ----- 今日 (カレンダー ⇄ WBS/TODO を線でつなぐ) -----
   const PX = 56; // 1時間あたりのpx
   const SVGNS = 'http://www.w3.org/2000/svg';
-  const STRIP = 14; // 右のWBSに並べる日数（選択日から）
+  const STRIP = 14; // 右のWBSに並べる日数
+  const VIEWS = [[1, '1日'], [3, '3日'], [7, '週']];
+  const viewN = () => [1, 3, 7].includes(Number(state.settings.view)) ? Number(state.settings.view) : 1;
+  // 週表示は月曜始まり。1日/3日は選択日から
+  function viewStart() {
+    if (viewN() !== 7) return ui.date;
+    return C.addDays(ui.date, -((C.parse(ui.date).getDay() + 6) % 7));
+  }
 
   function renderDay() {
     const root = $('#view-day'); root.replaceChildren();
-    const T = today();
+    const T = today(), n = viewN(), start = viewStart();
+    const dates = Array.from({ length: n }, (_, i) => C.addDays(start, i));
     const proj = C.projectAll(state.items, T);
-    const occs = C.occurrences(state.items, ui.date, T, proj);
+    const perDay = dates.map(d => C.occurrences(state.items, d, T, proj));
+    const isWe = d => [0, 6].includes(C.dowOf(d));
 
     root.append(h('div', { class: 'datenav' },
-      h('button', { onclick: () => shiftDate(-1) }, '‹'),
-      h('strong', {}, `${fmtDate(ui.date)}${ui.date === T ? '  今日' : ''}`),
-      h('button', { onclick: () => shiftDate(1) }, '›'),
-      ui.date !== T && h('button', { onclick: () => { ui.date = T; render(); } }, '今日へ')));
+      h('div', { class: 'seg2' }, VIEWS.map(([v, t]) => h('button', { class: n === v ? 'on' : '', onclick: () => { state.settings.view = v; save(); render(); } }, t))),
+      h('button', { onclick: () => shiftDate(-n) }, '‹'),
+      h('strong', {}, n === 1 ? `${fmtDate(start)}${start === T ? ' 今日' : ''}` : `${fmtDate(dates[0])} – ${fmtDate(dates[n - 1])}`),
+      h('button', { onclick: () => shiftDate(n) }, '›'),
+      !dates.includes(T) && h('button', { onclick: () => { ui.date = T; render(); } }, '今日へ')));
 
-    if (!state.items.length) {
-      root.append(h('p', { class: 'empty' }, 'まだ何もありません。「＋ 追加」から登録すると、ここにカレンダーとWBSがつながって表示されます。'));
-      return;
-    }
-
-    const timed = occs.filter(o => o.start != null).sort((a, b) => a.start - b.start);
-    const untimed = occs.filter(o => o.start == null);
-    const wrap = h('div', { class: 'linkview' });
-    const svg = document.createElementNS(SVGNS, 'svg'); svg.setAttribute('class', 'lv-lines');
+    const wrap = h('div', { class: 'linkview' + (n > 1 ? ' multi' : '') });
+    const svg = document.createElementNS(SVGNS, 'svg'); svg.setAttribute('class', 'lv-lines' + (n > 1 ? ' thin' : ''));
     const left = h('div', { class: 'lv-left' });
     const right = h('div', { class: 'lv-right' });
     wrap.append(svg, left, right);
 
-    // 左: 時間未定 + タイムライン
-    if (untimed.length) {
-      const box = h('div', { class: 'card' }, h('h3', {}, '時間未定'));
-      for (const o of untimed) box.append(occRow(o, ui.date, proj));
-      left.append(box);
-    }
+    // ---- 左: カレンダー ----
+    const timed = perDay.flat().filter(o => o.start != null);
+    let startH = 6, endH = 23;
     if (timed.length) {
-      const startH = Math.min(6, Math.floor(timed[0].start / 60));
-      const endH = Math.min(24, Math.max(22, Math.ceil(Math.max(...timed.map(o => o.start + (o.dur || 30))) / 60)) + 1);
-      const tl = h('div', { class: 'timeline', style: `height:${(endH - startH) * PX}px` });
-      for (let hr = startH; hr < endH; hr++)
-        tl.append(h('div', { class: 'hour', style: `top:${(hr - startH) * PX}px` }, h('span', {}, `${hr}:00`)));
-      layoutColumns(timed).forEach(({ o, col, cols }) => {
-        const dur = o.dur || 30, it = o.item;
-        tl.append(h('div', {
-          class: 'block' + (o.done ? ' done' : ''), 'data-id': it.id,
-          style: `top:${(o.start / 60 - startH) * PX}px;height:${Math.max(dur / 60 * PX - 2, 26)}px;left:calc(${col / cols * 100}% + var(--gut) * ${1 - col / cols});width:calc(${100 / cols}% - var(--gut) / ${cols});--c:${colorFor(it)}`,
+      startH = Math.min(6, Math.floor(Math.min(...timed.map(o => o.start)) / 60));
+      endH = Math.min(24, Math.max(22, Math.ceil(Math.max(...timed.map(o => o.start + (o.dur || 30))) / 60)) + 1);
+    }
+    const cal = h('div', { class: 'cal n' + n, style: `--n:${n}` });
+    const head = h('div', { class: 'cal-row cal-head' }, h('div', { class: 'gut' }));
+    dates.forEach(d => head.append(h('div', {
+      class: 'dh' + (d === T ? ' today' : '') + (isWe(d) ? ' we' : ''), title: 'この日に追加',
+      onclick: () => openDialog(null, { date: d }),
+    }, h('small', {}, DOW[C.dowOf(d)]), h('b', {}, String(C.parse(d).getDate())))));
+    cal.append(head);
+
+    if (perDay.some(list => list.some(o => o.start == null))) {
+      const ur = h('div', { class: 'cal-row cal-untimed' }, h('div', { class: 'gut' }, '未定'));
+      dates.forEach((d, i) => {
+        const cell = h('div', { class: 'uc' + (isWe(d) ? ' we' : ''), onclick: e => { if (e.target === cell) openDialog(null, { date: d }); } });
+        perDay[i].filter(o => o.start == null).forEach(o => cell.append(occRow(o, d, proj)));
+        ur.append(cell);
+      });
+      cal.append(ur);
+    }
+
+    const body = h('div', { class: 'cal-row cal-body', style: `height:${(endH - startH) * PX}px` });
+    const gut = h('div', { class: 'gut' });
+    for (let hr = startH; hr < endH; hr++) gut.append(h('div', { class: 'hl', style: `top:${(hr - startH) * PX}px` }, h('span', {}, `${hr}:00`)));
+    body.append(gut);
+    dates.forEach((d, i) => {
+      const dc = h('div', {
+        class: 'dc' + (d === T ? ' today' : '') + (isWe(d) ? ' we' : ''), 'data-date': d,
+        onclick: e => {
+          if (e.target.closest('.block')) return;
+          const y = e.clientY - dc.getBoundingClientRect().top;
+          const m = Math.min(Math.floor((startH * 60 + y / PX * 60) / 30) * 30, 23 * 60 + 30);
+          openDialog(null, { date: d, time: C.fromMin(m) });
         },
-          h('input', { type: 'checkbox', checked: o.done, onchange: () => toggleOcc(o, ui.date) }),
+      });
+      const list = perDay[i].filter(o => o.start != null).sort((a, b) => a.start - b.start);
+      layoutColumns(list).forEach(({ o, col, cols }) => {
+        const dur = o.dur || 30, it = o.item;
+        dc.append(h('div', {
+          class: 'block' + (o.done ? ' done' : ''), 'data-id': it.id, 'data-date': d,
+          style: `top:${(o.start / 60 - startH) * PX}px;height:${Math.max(dur / 60 * PX - 2, 26)}px;left:calc(${col / cols * 100}% + 1px);width:calc(${100 / cols}% - 2px);--c:${colorFor(it)}`,
+        },
+          h('input', { type: 'checkbox', checked: o.done, onchange: () => toggleOcc(o, d) }),
           h('div', { class: 'bt', onclick: () => pinOrEdit(it) },
             h('b', {}, it.title),
             h('small', {}, `${C.fromMin(o.start)}${o.dur ? '–' + C.fromMin(o.start + o.dur) : ''}${badge(o, proj)}`))));
       });
-      if (ui.date === T) {
+      if (d === T) {
         const now = new Date(), m = now.getHours() * 60 + now.getMinutes();
-        if (m / 60 >= startH && m / 60 <= endH) tl.append(h('div', { class: 'now', style: `top:${(m / 60 - startH) * PX}px` }));
+        if (m / 60 >= startH && m / 60 <= endH) dc.append(h('div', { class: 'now', style: `top:${(m / 60 - startH) * PX}px` }));
       }
-      left.append(tl);
-    }
-    if (!timed.length && !untimed.length) left.append(h('p', { class: 'empty small' }, 'この日の予定はありません。'));
+      body.append(dc);
+    });
+    cal.append(body);
+    left.append(cal, h('p', { class: 'hint' }, '空いている時間をタップすると、その日時で追加できます。日付をタップすると時間未定で追加できます。'));
 
-    // 右: WBS（継続作業・習慣）
-    const dates = Array.from({ length: STRIP }, (_, i) => C.addDays(ui.date, i));
+    // ---- 右: WBS（継続作業・習慣）----
+    const stripDates = Array.from({ length: STRIP }, (_, i) => C.addDays(start, i));
     const rows = state.items.filter(i => (i.kind === 'series' && !proj[i.id].finished) || i.kind === 'habit');
     if (rows.length) {
-      const box = h('div', { class: 'card' }, h('h3', {}, `WBS　${fmtDate(dates[0])} から${STRIP}日`));
+      const box = h('div', { class: 'card' }, h('h3', {}, `WBS　${fmtDate(stripDates[0])} から${STRIP}日`));
       for (const it of rows) {
         const p = proj[it.id];
         const sub = it.kind === 'series' ? `残り${C.fmtDur(p.remaining)} / ${C.fmtDur(it.total)}` : `🔥 ${C.streak(it, T)}日連続`;
         const eta = it.kind === 'series' ? (p.end ? `完了予定 ${fmtDate(p.end)}` : '') : '';
         const strip = h('div', { class: 'strip' });
-        dates.forEach((d, i) => {
+        stripDates.forEach((d, i) => {
           const o = C.occurrences([it], d, T, proj).find(x => x.item === it);
-          const cell = h('div', {
-            class: 'c' + (i === 0 ? ' first' : '') + ([0, 6].includes(C.dowOf(d)) ? ' we' : ''),
+          strip.append(h('div', {
+            class: 'c' + (i < n ? ' inview' : '') + (isWe(d) ? ' we' : ''), 'data-cell': `${it.id}|${d}`,
             title: `${fmtDate(d)}${o && o.planned ? ' ' + C.fmtDur(o.planned) : ''}`,
             onclick: ev => { ev.stopPropagation(); ui.date = d; render(); },
           }, h('span', { class: 'dn' }, String(C.parse(d).getDate())),
-            o && h('i', { class: 'm ' + it.kind + (o.done ? ' done' : '') + (it.kind === 'series' && p.end === d ? ' last' : '') }));
-          if (i === 0) cell.setAttribute('data-anchor', it.id);
-          strip.append(cell);
+            o && h('i', { class: 'm ' + it.kind + (o.done ? ' done' : '') + (it.kind === 'series' && p.end === d ? ' last' : '') })));
         });
         box.append(h('div', { class: 'srow', 'data-id': it.id, style: `--c:${colorFor(it)}` },
           h('div', { class: 'sh' }, h('div', { class: 'sname', onclick: () => openDialog(it) }, h('b', {}, it.title), h('small', {}, sub)),
@@ -159,16 +189,16 @@
       right.append(box);
     }
 
-    // 右: TODO（単発タスク）
-    const tasks = state.items.filter(i => i.kind === 'task' && (!i.done || i.date === ui.date))
+    // ---- 右: TODO（単発タスク）----
+    const tasks = state.items.filter(i => i.kind === 'task' && (!i.done || dates.includes(i.date)))
       .sort((a, b) => (a.done - b.done) || (a.date || '9999').localeCompare(b.date || '9999') || (a.time || '').localeCompare(b.time || ''));
     const tbox = h('div', { class: 'card' }, h('h3', {}, `TODO（${tasks.filter(t => !t.done).length}）`));
     if (!tasks.length) tbox.append(h('p', { class: 'empty small' }, '単発タスクはありません'));
     for (const t of tasks) {
       const o = { item: t, done: t.done };
       const meta = [t.date ? fmtDate(t.date) : 'いつでも', t.time, t.duration && C.fmtDur(t.duration), t.date && t.date < T && !t.done && '期限切れ'].filter(Boolean).join(' ・ ');
-      tbox.append(h('div', { class: 'row-item' + (t.done ? ' done' : '') + (t.date === ui.date ? ' onday' : ''), 'data-id': t.id, 'data-todo': t.id, style: `--c:${colorFor(t)}` },
-        h('input', { type: 'checkbox', checked: t.done, onchange: () => toggleOcc(o, ui.date) }),
+      tbox.append(h('div', { class: 'row-item' + (t.done ? ' done' : '') + (dates.includes(t.date) ? ' onday' : ''), 'data-id': t.id, 'data-todo': t.id, style: `--c:${colorFor(t)}` },
+        h('input', { type: 'checkbox', checked: t.done, onchange: () => toggleOcc(o, t.date || T) }),
         h('div', { class: 'grow', onclick: () => openDialog(t) }, h('b', {}, t.title), h('small', {}, meta))));
     }
     right.append(tbox);
@@ -194,17 +224,19 @@
     if (ui.pin === it.id) { openDialog(it); return; }
     ui.pin = it.id; setFocus(it.id);
   }
-  /** 左の予定 → 右のWBSマス / TODO行 へ曲線を引く */
+  /** 左の予定 → 右のWBSの該当日のマス / TODO行 へ曲線を引く */
   function drawLines() {
     const wrap = $('#view-day .linkview'); if (!wrap) return;
     const svg = wrap.querySelector('.lv-lines'); svg.replaceChildren();
+    if (getComputedStyle(svg).display === 'none') return;
     const wr = wrap.getBoundingClientRect();
     svg.setAttribute('width', wr.width); svg.setAttribute('height', wr.height);
     for (const el of wrap.querySelectorAll('.lv-left [data-id]')) {
       const id = el.dataset.id;
-      const tgt = wrap.querySelector(`.lv-right [data-anchor="${id}"], .lv-right [data-todo="${id}"]`);
+      const tgt = wrap.querySelector(`.lv-right [data-todo="${id}"], .lv-right [data-cell="${id}|${el.dataset.date}"]`);
       if (!tgt) continue;
       const a = el.getBoundingClientRect(), b = tgt.getBoundingClientRect();
+      if (!a.height) continue;
       const x1 = a.right - wr.left, y1 = a.top - wr.top + Math.min(a.height / 2, 16);
       const x2 = b.left - wr.left, y2 = b.top - wr.top + b.height / 2;
       const dx = Math.max(30, (x2 - x1) / 2);
@@ -249,7 +281,7 @@
     const it = o.item;
     const extra = it.kind === 'series' ? `${C.fmtDur(o.planned)}${badge(o, proj)}`
       : [o.dur && C.fmtDur(o.dur), o.overdue && `期限切れ(${fmtDate(it.date)})`].filter(Boolean).join(' ・ ');
-    return h('div', { class: 'row-item' + (o.done ? ' done' : ''), 'data-id': it.id, style: `--c:${colorFor(it)}` },
+    return h('div', { class: 'row-item' + (o.done ? ' done' : ''), 'data-id': it.id, 'data-date': date, style: `--c:${colorFor(it)}` },
       h('input', { type: 'checkbox', checked: o.done, onchange: () => toggleOcc(o, date) }),
       h('div', { class: 'grow', onclick: () => pinOrEdit(it) }, h('b', {}, it.title), h('small', {}, extra)));
   }
@@ -469,17 +501,17 @@
       : p.end ? `残り ${C.fmtDur(p.remaining)} → 作業日 ${n}日、完了予定 ${fmtDate(p.end)}` : '';
   }
 
-  function openDialog(item) {
+  function openDialog(item, preset) {
     ui.editing = item || null;
     form.reset();
-    $('#dlgTitle').textContent = item ? '編集' : '追加';
+    $('#dlgTitle').textContent = item ? '編集' : preset ? `追加　${fmtDate(preset.date)}${preset.time ? ' ' + preset.time : ''}` : '追加';
     $('#delBtn').hidden = !item;
     $('#kindSeg').hidden = !!item;
     const all = [0, 1, 2, 3, 4, 5, 6];
     dayChips($('#daysSeries'), item && item.kind === 'series' ? item.days : all);
     dayChips($('#daysHabit'), item && item.kind === 'habit' ? item.days : all);
     form.startDate.value = today();
-    let kind = item ? item.kind : (ui.tab === 'memo' ? 'memo' : ui.tab === 'tasks' ? 'task' : 'task');
+    let kind = item ? item.kind : 'task';
     if (item) {
       form.title.value = item.title || '';
       form.note.value = item.note || '';
@@ -487,7 +519,10 @@
       if (kind === 'series') { form.totalH.value = item.total / 60; form.perDay.value = item.perDay; form.startDate.value = item.startDate || today(); form.stime.value = item.time || ''; }
       if (kind === 'habit') { form.htime.value = item.time || ''; form.hduration.value = item.duration || ''; }
       if (kind === 'memo') form.text.value = item.text || '';
-    } else if (ui.tab === 'day') form.date.value = ui.date;
+    } else if (preset) {
+      form.date.value = form.startDate.value = preset.date;
+      form.time.value = form.stime.value = form.htime.value = preset.time || '';
+    }
     setKind(kind);
     dlg.showModal();
   }
@@ -569,7 +604,6 @@
 
   // ---------- init ----------
   $('#tabs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { ui.tab = b.dataset.tab; render(); } });
-  $('#addBtn').onclick = () => openDialog(null);
   let raf = 0; const redraw = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => ui.tab === 'day' && drawLines()); };
   window.addEventListener('resize', redraw); window.addEventListener('scroll', redraw, { passive: true });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) render(); });

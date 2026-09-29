@@ -92,7 +92,7 @@ main.wide{max-width:1180px}
 .strip{display:grid;grid-template-columns:repeat(14,minmax(0,1fr));gap:2px;margin-top:6px}
 .strip .c{position:relative;height:30px;border-radius:5px;background:color-mix(in srgb,var(--mut) 8%,transparent);cursor:pointer;display:flex;align-items:flex-end;justify-content:center;padding-bottom:3px}
 .strip .c.we{background:color-mix(in srgb,var(--mut) 15%,transparent)}
-.strip .c.first{outline:2px solid var(--c);outline-offset:0}
+.strip .c.inview{outline:2px solid var(--c);outline-offset:-1px}
 .strip .dn{position:absolute;top:1px;left:0;right:0;text-align:center;font-size:9px;color:var(--mut)}
 .strip .m{display:block;width:70%;height:10px;border-radius:3px;background:color-mix(in srgb,var(--c) 50%,var(--card))}
 .strip .m.habit{width:10px;border-radius:50%}.strip .m.done{background:var(--c)}.strip .m.last{outline:2px solid var(--c);outline-offset:1px}
@@ -105,7 +105,7 @@ main.wide{max-width:1180px}
 .block.hl,.srow.hl,.row-item.hl{box-shadow:0 0 0 2px var(--c)}
 
 #tabs button{white-space:nowrap}
-@media (max-width:520px){.top{gap:6px 8px}.top h1{font-size:16px}#tabs{order:3;flex-basis:100%}#tabs button{flex:1;padding:6px 4px}#addBtn{margin-left:auto}}
+@media (max-width:520px){.top{gap:6px 8px}.top h1{font-size:16px}#tabs button{flex:1;padding:6px 4px}}
 .timeline{--gut:44px}
 /* 狭い画面でも左右2列のまま線を見せる（右側は要点だけに絞る） */
 @media (max-width:759px){
@@ -119,4 +119,42 @@ main.wide{max-width:1180px}
   .sh{flex-wrap:wrap;gap:0}.srow .eta{font-size:10px}.srow{padding-left:6px;padding-right:4px}
   .row-item{gap:6px;padding-left:6px;padding-right:4px}.row-item small{font-size:10px}
   .row-item b{font-size:13px}
+}
+/* カレンダー（1日/3日/週） */
+.cal{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:clip}
+.cal-row{display:grid;grid-template-columns:44px repeat(var(--n),minmax(0,1fr))}
+.cal-head{position:sticky;top:calc(54px + env(safe-area-inset-top,0px));background:var(--card);z-index:4;border-bottom:1px solid var(--line)}
+.dh{text-align:center;padding:4px 0 5px;cursor:pointer;border-left:1px solid var(--line);line-height:1.2;min-width:0}
+.dh small{display:block;font-size:11px}.dh b{display:inline-block;min-width:26px;padding:2px 4px;border-radius:13px;font-size:15px}
+.dh.we small{color:#d2467c}.dh.today b{background:var(--pri);color:#fff}
+.dh:hover{background:color-mix(in srgb,var(--pri) 8%,transparent)}
+.cal .gut{position:relative;font-size:10px;color:var(--mut)}
+.cal-untimed{border-bottom:1px solid var(--line)}.cal-untimed .gut{padding:8px 4px}
+.uc{padding:3px;border-left:1px solid var(--line);display:flex;flex-direction:column;gap:3px;min-height:34px;min-width:0}
+.uc .row-item{margin-top:0;padding:4px 6px;gap:6px}.uc .row-item b{font-size:12px}.uc .row-item small{font-size:10px}
+.uc .row-item input[type=checkbox]{width:15px;height:15px}
+.cal-body{position:relative}
+.dc{position:relative;border-left:1px solid var(--line);cursor:cell;min-width:0;background-image:repeating-linear-gradient(to bottom,transparent 0,transparent 55px,var(--line) 55px,var(--line) 56px)}
+.dc.we{background-color:color-mix(in srgb,var(--mut) 6%,transparent)}
+.dc.today{background-color:color-mix(in srgb,var(--pri) 7%,transparent)}
+.dc:hover{background-color:color-mix(in srgb,var(--pri) 5%,transparent)}
+.gut .hl{position:absolute;left:0;right:0;height:0}.gut .hl span{position:absolute;top:2px;left:6px;font-size:11px;color:var(--mut)}
+.dc .now::before{left:-4px}
+.dc .block{cursor:default}
+.seg2{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-right:6px}
+.seg2 button{border:0;border-radius:0;background:var(--card);padding:5px 12px}
+.seg2 button.on{background:var(--pri);color:#fff}
+.hint{margin:6px 2px}
+.linkview.multi{grid-template-columns:minmax(0,1.7fr) minmax(0,1fr);column-gap:70px}
+.lv-lines.thin path{stroke-width:1.6;opacity:.7}
+.cal.n3 .block small{font-size:11px}
+.cal.n7 .block{padding:2px 3px;gap:3px}.cal.n7 .block b{font-size:12px}.cal.n7 .block small{display:none}
+.cal.n7 .block input[type=checkbox]{width:13px;height:13px}
+@media (max-width:759px){
+  .cal-row{grid-template-columns:30px repeat(var(--n),minmax(0,1fr))}
+  .gut .hl span{font-size:9px;left:3px}
+  .linkview.multi{grid-template-columns:minmax(0,1fr);row-gap:12px}
+  .linkview.multi .lv-lines{display:none}.linkview.multi .lv-right{position:static}
+  .cal.n7 .block input[type=checkbox]{display:none}
+  .seg2 button{padding:5px 9px}
 }
