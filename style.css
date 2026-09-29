@@ -81,8 +81,8 @@ main{padding-bottom:calc(80px + env(safe-area-inset-bottom))}
 main.wide{max-width:1180px}
 .linkview{position:relative;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);column-gap:84px;align-items:start}
 .lv-lines{position:absolute;left:0;top:0;pointer-events:none;overflow:visible;z-index:3}
-.lv-lines path{stroke-width:1.6;stroke-linecap:round;opacity:.6;transition:opacity .15s,stroke-width .15s}
-.lv-lines circle{opacity:.85;transition:opacity .15s}
+.lv-lines path{stroke-width:2.2;stroke-linecap:round;opacity:.9;transition:opacity .15s,stroke-width .15s}
+.lv-lines circle{opacity:1;transition:opacity .15s}
 .lv-right{position:sticky;top:calc(64px + env(safe-area-inset-top,0px))}
 .lv-left .card:first-child{margin-top:0}.lv-right .card:first-child{margin-top:0}
 .srow{padding:8px 0 10px 10px;border-left:4px solid var(--c);margin-top:8px;border-radius:6px;background:color-mix(in srgb,var(--c) 6%,transparent);padding-right:8px}
@@ -103,6 +103,20 @@ main.wide{max-width:1180px}
 .has-focus .lv-lines [data-id]:not(.hl){opacity:.1}
 .lv-lines path.hl{stroke-width:3;opacity:1}.lv-lines circle.hl{opacity:1}
 .block.hl,.srow.hl,.row-item.hl{box-shadow:0 0 0 2px var(--c)}
-@media (max-width:759px){.linkview{grid-template-columns:minmax(0,1fr);row-gap:12px}.lv-right{position:static}}
+
 #tabs button{white-space:nowrap}
 @media (max-width:520px){.top{gap:6px 8px}.top h1{font-size:16px}#tabs{order:3;flex-basis:100%}#tabs button{flex:1;padding:6px 4px}#addBtn{margin-left:auto}}
+.timeline{--gut:44px}
+/* 狭い画面でも左右2列のまま線を見せる（右側は要点だけに絞る） */
+@media (max-width:759px){
+  main{padding:8px 8px 80px}
+  .linkview{grid-template-columns:minmax(0,.95fr) minmax(0,1.05fr);column-gap:30px}
+  .timeline{--gut:30px}.hour span{font-size:9px;left:3px}
+  .block{padding:3px 5px;gap:4px}.block b{font-size:12px}.block small{font-size:10px}
+  .block input[type=checkbox]{width:15px;height:15px}
+  .card{padding:8px 8px;margin:8px 0}
+  .strip{grid-template-columns:repeat(7,minmax(0,1fr))}.strip .c:nth-child(n+8){display:none}
+  .sh{flex-wrap:wrap;gap:0}.srow .eta{font-size:10px}.srow{padding-left:6px;padding-right:4px}
+  .row-item{gap:6px;padding-left:6px;padding-right:4px}.row-item small{font-size:10px}
+  .row-item b{font-size:13px}
+}

@@ -115,7 +115,7 @@
         const dur = o.dur || 30, it = o.item;
         tl.append(h('div', {
           class: 'block' + (o.done ? ' done' : ''), 'data-id': it.id,
-          style: `top:${(o.start / 60 - startH) * PX}px;height:${Math.max(dur / 60 * PX - 2, 26)}px;left:calc(${col / cols * 100}% + 44px * ${1 - col / cols});width:calc(${100 / cols}% - 44px / ${cols});--c:${colorFor(it)}`,
+          style: `top:${(o.start / 60 - startH) * PX}px;height:${Math.max(dur / 60 * PX - 2, 26)}px;left:calc(${col / cols * 100}% + var(--gut) * ${1 - col / cols});width:calc(${100 / cols}% - var(--gut) / ${cols});--c:${colorFor(it)}`,
         },
           h('input', { type: 'checkbox', checked: o.done, onchange: () => toggleOcc(o, ui.date) }),
           h('div', { class: 'bt', onclick: () => pinOrEdit(it) },
@@ -193,18 +193,11 @@
   function pinOrEdit(it) {
     if (ui.pin === it.id) { openDialog(it); return; }
     ui.pin = it.id; setFocus(it.id);
-    const wrap = $('#view-day .linkview');
-    if (wrap && wrap.clientWidth < 760) { // 1列表示のときは該当行へスクロール
-      const t = wrap.querySelector(`.lv-right [data-id="${it.id}"]`);
-      if (t) t.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    }
   }
   /** 左の予定 → 右のWBSマス / TODO行 へ曲線を引く */
   function drawLines() {
     const wrap = $('#view-day .linkview'); if (!wrap) return;
     const svg = wrap.querySelector('.lv-lines'); svg.replaceChildren();
-    if (wrap.clientWidth < 760) { svg.style.display = 'none'; return; }
-    svg.style.display = '';
     const wr = wrap.getBoundingClientRect();
     svg.setAttribute('width', wr.width); svg.setAttribute('height', wr.height);
     for (const el of wrap.querySelectorAll('.lv-left [data-id]')) {
